@@ -8,7 +8,26 @@
 
 body {
   font-family: 'Segoe UI', sans-serif;
-  background: #f0f4f8;
+  background: linear-gradient(160deg, #fff0f5 0%, #fce4ec 50%, #f8d7e8 100%);
   color: #333;
   min-height: 100vh;
+}
+
+@keyframes petalFall {
+  0% {
+    transform: translateY(-30px) translateX(0px) rotate(0deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translateY(30vh) translateX(var(--sway)) rotate(120deg);
+    opacity: 0.95;
+  }
+  60% {
+    transform: translateY(60vh) translateX(calc(var(--sway) * -0.5)) rotate(240deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(105vh) translateX(var(--sway)) rotate(360deg);
+    opacity: 0.5;
+  }
 }
