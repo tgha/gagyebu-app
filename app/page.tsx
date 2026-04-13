@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Transaction } from '@/types';
+import { supabase } from '@/lib/supabase';
 import BalanceCard from '@/components/BalanceCard';
 import MonthFilter from '@/components/MonthFilter';
 import TransactionForm from '@/components/TransactionForm';
@@ -9,36 +10,89 @@ import TransactionList from '@/components/TransactionList';
 import CherryBlossom from '@/components/CherryBlossom';
 import BottomScene from '@/components/BottomScene';
 
-const STORAGE_KEY = 'gagyebu_data';
-
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
 
+  // DB에서 해당 월 거래내역 불러오기
+  async function fetchTransactions(year: number, month: number) {
+    setLoading(true);
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .like('date', `${prefix}%`)
+      .order('date', { ascending: false });
+
+    if (!error && data) {
+      setTransactions(
+        data.map(row => ({
+          id: row.id,
+          type: row.type,
+          desc: row.description,
+          amount: row.amount,
+          category: row.category,
+          date: row.date,
+        }))
+      );
+    }
+    setLoading(false);
+  }
+
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) setTransactions(JSON.parse(saved));
-  }, []);
+    fetchTransactions(viewYear, viewMonth);
+  }, [viewYear, viewMonth]);
 
-  function save(txs: Transaction[]) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(txs));
-    setTransactions(txs);
+  async function addTransaction(tx: Omit<Transaction, 'id'>) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert({
+        type: tx.type,
+        description: tx.desc,
+        amount: tx.amount,
+        category: tx.category,
+        date: tx.date,
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setTransactions(prev => [{
+        id: data.id,
+        type: data.type,
+        desc: data.description,
+        amount: data.amount,
+        category: data.category,
+        date: data.date,
+      }, ...prev]);
+    }
   }
 
-  function addTransaction(tx: Omit<Transaction, 'id'>) {
-    save([{ id: Date.now(), ...tx }, ...transactions]);
+  async function deleteTransaction(id: number) {
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setTransactions(prev => prev.filter(t => t.id !== id));
+    }
   }
 
-  function deleteTransaction(id: number) {
-    save(transactions.filter(t => t.id !== id));
-  }
-
-  function clearAll() {
+  async function clearAll() {
     if (!confirm('이번 달 거래 내역을 모두 삭제할까요?')) return;
     const prefix = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
-    save(transactions.filter(t => !t.date.startsWith(prefix)));
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .like('date', `${prefix}%`);
+
+    if (!error) {
+      setTransactions([]);
+    }
   }
 
   function changeMonth(dir: number) {
@@ -50,11 +104,9 @@ export default function Home() {
     });
   }
 
-  const prefix   = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
-  const filtered = transactions.filter(t => t.date.startsWith(prefix));
-  const income   = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const expense  = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const balance  = income - expense;
+  const income  = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const balance = income - expense;
 
   return (
     <>
@@ -82,11 +134,15 @@ export default function Home() {
           <BalanceCard balance={balance} income={income} expense={expense} />
           <MonthFilter year={viewYear} month={viewMonth} onChange={changeMonth} />
           <TransactionForm onAdd={addTransaction} />
-          <TransactionList
-            transactions={filtered}
-            onDelete={deleteTransaction}
-            onClearAll={clearAll}
-          />
+          {loading ? (
+            <p style={{ textAlign: 'center', color: '#aaa' }}>불러오는 중...</p>
+          ) : (
+            <TransactionList
+              transactions={transactions}
+              onDelete={deleteTransaction}
+              onClearAll={clearAll}
+            />
+          )}
         </div>
 
         {/* 경복궁 돌담길 연인 장면 */}
